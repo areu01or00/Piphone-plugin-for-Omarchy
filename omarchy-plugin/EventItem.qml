@@ -188,6 +188,9 @@ Item {
             radius: Style.space(8); color: Util.alpha(root.bg, 0.55)
             border.width: editArea.activeFocus ? 1 : 0; border.color: Util.alpha(root.accent, 0.7)
           }
+          // TextArea has no maximumLength: clamp here so a huge or streaming
+          // clipboard paste can't bloat the shared shell's memory.
+          onTextChanged: if (length > 8000) remove(8000, length)
         }
         Rectangle {
           visible: !appr.editable && !!root.ev.message

@@ -118,6 +118,9 @@ Item {
         Keys.onPressed: function(e) {
           if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { root.submit(); e.accepted = true }
         }
+        // TextArea has no maximumLength: clamp here so a huge or streaming
+        // clipboard paste can't bloat the shared shell's memory.
+        onTextChanged: if (length > 8000) remove(8000, length)
       }
 
       Flow {

@@ -169,6 +169,9 @@ Item {
                        : root.queued ? "Queued — your message runs when it gets the phone"
                        : "Message — continues this session"
         font.family: root.fontFamily
+        // Cap pasted/typed length so a huge or streaming clipboard source can't
+        // bloat the shared shell. TextField enforces maximumLength on paste too.
+        maximumLength: 8000
         onAccepted: { var t = text.trim(); if (!t) return; root.service.send(t); text = ""; timeline.follow = true }
       }
       Button { text: "Send"; bordered: true; accent: root.accent; fontFamily: root.fontFamily; onClicked: composer.accepted() }
