@@ -10,8 +10,9 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%2F%20Wayland-FCC624?logo=linux&logoColor=black)](#requirements)
 [![Issues](https://img.shields.io/github/issues/areu01or00/Piphone-plugin-for-Omarchy?color=555)](https://github.com/areu01or00/Piphone-plugin-for-Omarchy/issues)
 
-<!-- Drop a short, redacted demo clip here before publishing (e.g. docs/demo.gif).
-     Keep any real account names / channels out of the frame. -->
+<p align="center">
+  <img src="docs/demo.gif" alt="Piphone demo — an agent researching on X and relaying a summary to Discord" width="720">
+</p>
 
 ---
 
