@@ -42,10 +42,10 @@ Item {
   function close() { opened = false; if (service) service.panelOpen = false }
   function dismiss() {
     close()
-    if (shell && typeof shell.hide === "function") shell.hide((manifest && manifest.id) || "x.iphone-agent")
+    if (shell && typeof shell.hide === "function") shell.hide((manifest && manifest.id) || "areu01or00.piphone")
   }
 
-  // Inspection hook for `omarchy-shell shell call x.iphone-agent view <new|first|large|compact>`.
+  // Inspection hook for `omarchy-shell shell call areu01or00.piphone view <new|first|large|compact>`.
   function view(arg) {
     if (!service) return "no service"
     if (arg === "new") service.select("")

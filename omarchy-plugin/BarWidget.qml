@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "x.iphone-agent"
+  moduleName: "areu01or00.piphone"
 
   property string phoneState: "no_phone"
   property string phoneMessage: ""
@@ -58,10 +58,10 @@ BarWidget {
     onPressed: function(mouseButton) {
       if (!root.bar) return
       if (mouseButton === Qt.RightButton) {
-        root.bar.run("omarchy-shell shell summon x.iphone-agent '{\"view\":\"new\"}'")
+        root.bar.run("omarchy-shell shell summon " + root.moduleName + " '{\"view\":\"new\"}'")
         return
       }
-      root.bar.run("omarchy-shell shell toggle x.iphone-agent")
+      root.bar.run("omarchy-shell shell toggle " + root.moduleName)
     }
 
     // Subtle pulse while the agent drives the phone.
