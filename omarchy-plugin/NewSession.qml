@@ -152,7 +152,7 @@ Item {
           }
         }
       }
-      SearchableDropdown {
+      BoundedDropdown {
         Layout.fillWidth: true
         visible: root.appOptions.length > 0
         showLabel: false
@@ -164,7 +164,7 @@ Item {
       }
 
       SectionLabel { text: "MODEL" }
-      SearchableDropdown {
+      BoundedDropdown {
         Layout.fillWidth: true
         showLabel: false
         value: root.model
@@ -196,11 +196,29 @@ Item {
       }
 
       SectionLabel { text: "LIMITS" }
+      // Preset choices instead of free-text numeric fields: no text input means
+      // no native clipboard-paste read in the shared shell.
       RowLayout {
         Layout.fillWidth: true
-        spacing: Style.space(16)
-        NumberField { label: "Posts / hour"; from: 1; to: 60; value: root.maxHour; fontFamily: root.fontFamily; onModified: function(v) { root.maxHour = v } }
-        NumberField { label: "Posts / session"; from: 1; to: 200; value: root.maxSession; fontFamily: root.fontFamily; onModified: function(v) { root.maxSession = v } }
+        spacing: Style.space(8)
+        Text { Layout.preferredWidth: Style.space(104); text: "Posts / hour"; color: root.fg; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+        ButtonGroup {
+          options: [{ value: "3", label: "3" }, { value: "6", label: "6" }, { value: "10", label: "10" }, { value: "20", label: "20" }, { value: "60", label: "60" }]
+          value: String(root.maxHour)
+          fontFamily: root.fontFamily; fontSize: Style.font.bodySmall; accent: root.accent
+          onChanged: function(v) { root.maxHour = parseInt(v) }
+        }
+      }
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+        Text { Layout.preferredWidth: Style.space(104); text: "Posts / session"; color: root.fg; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall }
+        ButtonGroup {
+          options: [{ value: "10", label: "10" }, { value: "20", label: "20" }, { value: "50", label: "50" }, { value: "100", label: "100" }, { value: "200", label: "200" }]
+          value: String(root.maxSession)
+          fontFamily: root.fontFamily; fontSize: Style.font.bodySmall; accent: root.accent
+          onChanged: function(v) { root.maxSession = parseInt(v) }
+        }
       }
       RowLayout {
         Layout.fillWidth: true
