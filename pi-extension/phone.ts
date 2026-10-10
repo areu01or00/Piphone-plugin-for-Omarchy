@@ -28,6 +28,23 @@ export default function phoneExtension(pi: ExtensionAPI) {
   let mode: "ask" | "auto" = "ask", scope: string[] = [], maxHour = 6, maxSession = 20;
   let grants: { app: string; where: string; until: number }[] = [];
   const activeGrant = (app: string, where: string) => grants.find(g => g.until > Date.now() && g.app.toLowerCase() === String(app).toLowerCase() && g.where.toLowerCase() === String(where).toLowerCase());
+  // A timeboxed grant auto-approves a post only when it is bound to device
+  // ground truth, never to caller-supplied strings: the live foreground app
+  // must BE the granted app, and the granted destination must actually appear
+  // on the snapshot the send target was taken from. An agent therefore cannot
+  // reuse a granted app/where name while the refs post into a different app or
+  // destination — anything we cannot positively confirm falls through to the
+  // normal approval card (the safe direction).
+  const grantHonored = async (p: any): Promise<boolean> => {
+    if (!activeGrant(p.app, p.where)) return false;
+    const grantBundle = await resolveBundle(String(p.app));
+    if (!grantBundle || grantBundle !== await client.activeApp()) return false;  // granted app is not foreground
+    const where = String(p.where || "").trim().toLowerCase();
+    if (!where) return true;                                   // empty where = any destination within the app
+    const snap = client.latest;                               // the snapshot the send_ref/field_ref came from
+    const hay = snap ? snap.elements.map(e => `${e.label} ${e.value}`).join("\n").toLowerCase() : "";
+    return hay.includes(where);                                // the named destination must be on that live screen
+  };
   const reasonFor = (p: any) => p.intent || (p.reply_to ? `replying to ${p.reply_to.author}` : `posting to ${p.where || p.app}`);
   let busy = false, timer: NodeJS.Timeout | undefined, watched: { app: string; bundle: string; previous: Snapshot } | undefined;
   const hourlyPosts: number[] = [];
@@ -316,7 +333,7 @@ export default function phoneExtension(pi: ExtensionAPI) {
       hardPolicy(p);
       const now = Date.now();
       if (mode === "auto") checkAutoLimits(hourlyPosts, sessionPosts, now, maxHour, maxSession);
-      const ask = (mode === "ask" && !activeGrant(p.app, p.where))
+      const ask = (mode === "ask" && !(await grantHonored(p)))
         ? async (pp: any) => ctx.ui.editor(`Post to ${pp.app} / ${pp.where} — ${reasonFor(pp)}`, pp.text)
         : async () => p.text;
       // Re-assert scope after approval: the foreground could have changed while
