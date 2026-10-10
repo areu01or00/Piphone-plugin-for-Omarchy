@@ -66,6 +66,8 @@ iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────�
 - **[Pi](https://github.com/earendil-works/pi)** on `PATH` (or set `PI_BIN`), with a model configured —
   default is `openrouter/deepseek/deepseek-v4.1-flash`, so an **OpenRouter API key** in your environment.
 - **Go 1.26+** and a **C toolchain** to build the supervisor and the `c/` tools (`install.sh` does this).
+- **`wl-clipboard`** (`wl-paste`) — the panel reads the clipboard through it with a hard byte cap, so a
+  paste never triggers an unbounded read inside the shared shell.
 - `pymobiledevice3` only when you re-sign WebDriverAgent with `wda/resign.sh`.
 
 ## Install

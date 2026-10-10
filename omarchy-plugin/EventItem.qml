@@ -188,9 +188,13 @@ Item {
             radius: Style.space(8); color: Util.alpha(root.bg, 0.55)
             border.width: editArea.activeFocus ? 1 : 0; border.color: Util.alpha(root.accent, 0.7)
           }
-          // TextArea has no maximumLength: clamp here so a huge or streaming
-          // clipboard paste can't bloat the shared shell's memory.
+          // Route paste through the bounded reader; never Qt's native unbounded read.
+          Keys.onPressed: function(e) {
+            if ((e.key === Qt.Key_V && (e.modifiers & Qt.ControlModifier)) || (e.key === Qt.Key_Insert && (e.modifiers & Qt.ShiftModifier))) { clipEdit.paste(false); e.accepted = true }
+          }
+          // Backstop: clamp retained length (bounded paste already caps the read).
           onTextChanged: if (length > 8000) remove(8000, length)
+          BoundedClipboard { id: clipEdit }
         }
         Rectangle {
           visible: !appr.editable && !!root.ev.message

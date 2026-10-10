@@ -21,7 +21,7 @@ die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 # --- 1. Dependency check -----------------------------------------------------
 say "Checking dependencies"
 missing=()
-for bin in go cc make tmux jq systemctl; do
+for bin in go cc make tmux jq systemctl wl-paste; do
   command -v "$bin" >/dev/null 2>&1 || missing+=("$bin")
 done
 command -v pi >/dev/null 2>&1 || warn "pi (the agent runtime) not found on PATH — the panel needs it to run sessions."

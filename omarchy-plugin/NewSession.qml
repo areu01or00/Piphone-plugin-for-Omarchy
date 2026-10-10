@@ -116,11 +116,13 @@ Item {
           border.color: goal.activeFocus ? Util.alpha(root.accent, 0.8) : Util.alpha(root.fg, 0.12)
         }
         Keys.onPressed: function(e) {
-          if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { root.submit(); e.accepted = true }
+          if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier)) { root.submit(); e.accepted = true; return }
+          // Route paste through the bounded reader; never Qt's native unbounded read.
+          if ((e.key === Qt.Key_V && (e.modifiers & Qt.ControlModifier)) || (e.key === Qt.Key_Insert && (e.modifiers & Qt.ShiftModifier))) { clip.paste(false); e.accepted = true }
         }
-        // TextArea has no maximumLength: clamp here so a huge or streaming
-        // clipboard paste can't bloat the shared shell's memory.
+        // Backstop: clamp retained length (bounded paste already caps the read).
         onTextChanged: if (length > 8000) remove(8000, length)
+        BoundedClipboard { id: clip }
       }
 
       Flow {
