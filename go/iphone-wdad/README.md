@@ -2,9 +2,10 @@
 
 One static Go binary that supervises WebDriverAgent on a USB iPhone. It watches usbmux for a device,
 starts a **rootless userspace tunnel** with the [go-ios](https://github.com/danielpaulus/go-ios)
-library, runs WebDriverAgent over testmanagerd, forwards `127.0.0.1:8100` (WDA) and `:9100` (MJPEG),
-and publishes state under `$XDG_RUNTIME_DIR/iphone-agent/`. It is the project's WDA supervisor
-(superseding the `wda/wda_up.py` pymobiledevice3 path, which is kept as an alternative).
+library, runs WebDriverAgent over testmanagerd, and serves WDA and MJPEG to the owner over the
+private Unix sockets `wda.sock` / `mjpeg.sock` in `$XDG_RUNTIME_DIR/iphone-agent/` (0600), publishing
+state there too. The unit runs with `PrivateNetwork=yes`, so the userspace tunnel's internal
+localhost listener is isolated in its own network namespace and unreachable by other local users.
 
 ## Build
 

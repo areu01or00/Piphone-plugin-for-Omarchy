@@ -247,7 +247,7 @@ func runOnce(ctx context.Context, device ios.DeviceEntry, runner string) error {
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
-	writeStatus("ready", fmt.Sprintf("WDA available on 127.0.0.1:%d", wdaPort))
+	writeStatus("ready", "WDA available on wda.sock")
 
 	select {
 	case <-runCtx.Done():

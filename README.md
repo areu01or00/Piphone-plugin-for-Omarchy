@@ -5,7 +5,6 @@
 [![Omarchy plugin](https://img.shields.io/badge/omarchy-plugin-8A2BE2)](https://omarchy.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3DA639.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go/iphone-wdad)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](wda)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Pi%20extension-3178C6?logo=typescript&logoColor=white)](pi-extension)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%2F%20Wayland-FCC624?logo=linux&logoColor=black)](#requirements)
 [![Issues](https://img.shields.io/github/issues/areu01or00/Piphone-plugin-for-Omarchy?color=555)](https://github.com/areu01or00/Piphone-plugin-for-Omarchy/issues)
@@ -41,12 +40,12 @@ can be followed up, stopped, and reviewed.
 Omarchy bar widget / panel   (omarchy-plugin/*.qml)
         │  spawns, one per session
         ▼
-Pi agent  ──  phone.ts tools  (pi-extension/)   ──►  WDA HTTP @ 127.0.0.1:8100
+Pi agent  ──  phone.ts tools  (pi-extension/)   ──►  wda.sock (owner-only, 0600)
                                                           ▲
 iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────┘
    watches usbmux, runs WebDriverAgent over testmanagerd,
-   forwards :8100 (WDA) and :9100 (MJPEG),
-   publishes state to $XDG_RUNTIME_DIR/iphone-agent/
+   serves WDA + MJPEG over Unix sockets in $XDG_RUNTIME_DIR/iphone-agent/,
+   runs with PrivateNetwork=yes so the tunnel isn't exposed to other users
         ▲
    USB ─┘  iPhone running a signed WebDriverAgent
 ```
@@ -57,8 +56,7 @@ iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────�
 - **`omarchy-plugin/`** — the Quickshell plugin: `Service.qml` owns sessions, `IPhoneAgent.qml` is the
   panel, `BarWidget.qml` the bar icon.
 - **`c/`** — a libc-only diagnostic CLI (`phone`) and an MJPEG frame tap.
-- **`wda/`** — provisioning: `resign.sh` for the weekly free-profile renewal, plus a pymobiledevice3
-  supervisor (`wda_up.py`) as an alternative to the Go one.
+- **`wda/`** — WebDriverAgent signing: `resign.sh` renews the free provisioning profile each week.
 
 ## Requirements
 
@@ -67,8 +65,8 @@ iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────�
   every 7 days — see [`wda/README.md`](wda/README.md)), paired to this machine over USB.
 - **[Pi](https://github.com/earendil-works/pi)** on `PATH` (or set `PI_BIN`), with a model configured —
   default is `openrouter/deepseek/deepseek-v4.1-flash`, so an **OpenRouter API key** in your environment.
-- **Go 1.26+** to build the daemon (or grab the binary from Releases).
-- A C toolchain for the optional `c/` tools; Python 3.11+ only if you use the `wda_up.py` alternative.
+- **Go 1.26+** and a **C toolchain** to build the supervisor and the `c/` tools (`install.sh` does this).
+- `pymobiledevice3` only when you re-sign WebDriverAgent with `wda/resign.sh`.
 
 ## Install
 
@@ -80,8 +78,12 @@ omarchy plugin add https://github.com/areu01or00/Piphone-plugin-for-Omarchy.git 
 cd ~/.config/omarchy/plugins/areu01or00.piphone
 ./install.sh
 
-# 3. Point the supervisor at your signed WDA runner (ends in your Apple Team ID)
-export IPHONE_WDA_RUNNER=com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>
+# 3. Point the supervisor at your signed WDA runner (ends in your Apple Team ID).
+#    Use a systemd drop-in so the user service picks it up (a shell export won't reach it):
+mkdir -p ~/.config/systemd/user/iphone-wdad.service.d
+printf '[Service]\nEnvironment=IPHONE_WDA_RUNNER=com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>\n' \
+  > ~/.config/systemd/user/iphone-wdad.service.d/runner.conf
+systemctl --user daemon-reload && systemctl --user restart iphone-wdad.service
 ```
 
 `install.sh` is idempotent: it checks dependencies, builds the static Go supervisor and the C tools,
@@ -106,6 +108,11 @@ shows the phone as ready; otherwise it shows `no_phone` / an error with a messag
 - Actions that post, send, follow, or message are gated: **ask** mode requires approval; **autopilot**
   respects per-hour and per-session caps.
 - The agent only sees apps you scope into a session.
+- **Owner-only control plane.** WebDriverAgent and the MJPEG live view are served only over Unix sockets
+  (`wda.sock` / `mjpeg.sock`, `0600`, in the `0700` `$XDG_RUNTIME_DIR/iphone-agent`), never a loopback TCP
+  port. The supervisor runs with `PrivateNetwork=yes`, so the go-ios userspace tunnel's internal localhost
+  listener is isolated in its own network namespace and unreachable by other local users.
+- Private memory (`profile.md`) is written via stdin (never argv) and kept `0600` in a `0700` dir.
 - The WDA daemon logs to stderr and **never logs screen content**; state files are written `0600`.
 - Nothing leaves your machine except the model API calls you configure.
 
@@ -115,11 +122,11 @@ shows the phone as ready; otherwise it shows `no_phone` / an error with a messag
 # Pi phone-tool unit tests
 node --experimental-strip-types --test test/phone.test.ts
 
-# Python supervisor syntax
-python3 -m py_compile wda/wda_up.py
+# Supervisor build + vet
+( cd go/iphone-wdad && go build ./... && go vet ./... )
 
 # Shell + validate the plugin manifest
-bash -n wda/resign.sh bin/iphone-agent
+bash -n wda/resign.sh bin/iphone-agent install.sh
 omarchy plugin validate .
 ```
 

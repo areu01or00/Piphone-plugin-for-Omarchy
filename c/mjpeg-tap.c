@@ -1,9 +1,10 @@
-// mjpeg-tap — keep only the latest frame of WDA's MJPEG stream (127.0.0.1:9100).
+// mjpeg-tap — keep only the latest frame of WDA's MJPEG stream, read over the
+// owner-only Unix socket $XDG_RUNTIME_DIR/iphone-agent/mjpeg.sock.
 // Writes $XDG_RUNTIME_DIR/iphone-agent/frame.jpg atomically, at most FPS times a second
 // (default 4), so a UI can show the phone live without asking WDA for PNG screenshots.
 // Frames stay in tmpfs; nothing is logged. Reconnects with backoff. libc only.
 //
-//   mjpeg-tap [fps]        (IPHONE_MJPEG_PORT overrides 9100)
+//   mjpeg-tap [fps]        (IPHONE_MJPEG_SOCK overrides the socket path)
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <fcntl.h>

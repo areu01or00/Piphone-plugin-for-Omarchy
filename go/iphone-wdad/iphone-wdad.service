@@ -4,6 +4,12 @@ After=usbmuxd.service
 
 [Service]
 Type=simple
+# Isolate the go-ios userspace tunnel's localhost listener (127.0.0.1:49160, and
+# any other TCP it opens) inside a private network namespace, so no other local
+# UID can reach it. WDA and MJPEG are served to the owner over the filesystem Unix
+# sockets in $XDG_RUNTIME_DIR/iphone-agent (0600), and usbmuxd is a filesystem
+# socket too, so the supervisor stays fully functional with no host networking.
+PrivateNetwork=yes
 ExecStart=%h/.config/omarchy/plugins/areu01or00.piphone/go/iphone-wdad/iphone-wdad
 Restart=always
 RestartSec=2

@@ -56,8 +56,9 @@ if [[ "$repo" == "$expected" ]]; then
   say "Service status: $(systemctl --user is-active iphone-wdad.service || true)"
 else
   warn "Repo is not at the plugin install path, so the systemd unit is not linked."
-  warn "For development, run the supervisor directly:"
-  warn "    ./go/iphone-wdad/iphone-wdad"
+  warn "For development, run it in a private network namespace (as the unit does),"
+  warn "so the go-ios tunnel's localhost listener isn't exposed to other local users:"
+  warn "    systemd-run --user -p PrivateNetwork=yes --pty ./go/iphone-wdad/iphone-wdad"
 fi
 
 cat <<EOF

@@ -1,4 +1,5 @@
-// phone — one action per call against WebDriverAgent on 127.0.0.1:8100.
+// phone — one action per call against WebDriverAgent over the owner-only Unix
+// socket $XDG_RUNTIME_DIR/iphone-agent/wda.sock (IPHONE_WDA_SOCK overrides).
 // Pure C (libc only). Same verbs and outline format as bin/phone; state (WDA session,
 // bundle, generation, latest refs) persists in $XDG_RUNTIME_DIR/iphone-agent/cphone.state.
 //

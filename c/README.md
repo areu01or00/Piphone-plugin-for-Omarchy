@@ -8,8 +8,9 @@
   iPhone (iOS 27, 2026-10-01)**: home 1.0 s, open X 0.9 s, taps 1.1–1.4 s, typing `test 😭 नमस्ते` exact in 3.1 s;
   warm Node `bin/phone` taps 1.4–1.5 s, so the device dominates and C saves the ~0.4–0.7 s of Node startup per
   call. The agent's in-process tools don't pay that startup, so this is a CLI win, not an agent win.
-- **`mjpeg-tap`** (~90 lines, 17 KB): reads WDA's MJPEG stream (127.0.0.1:9100) and atomically publishes only the
-  newest frame to `$XDG_RUNTIME_DIR/iphone-agent/frame.jpg` at ≤ N fps. The panel's LiveView now reloads that
-  tmpfs file instead of pulling a full-resolution PNG `/screenshot` every 0.9 s. `wda_up.py` now also forwards 9100.
+- **`mjpeg-tap`** (~90 lines, 17 KB): reads WDA's MJPEG stream over the owner-only Unix socket
+  `$XDG_RUNTIME_DIR/iphone-agent/mjpeg.sock` and atomically publishes only the newest frame to
+  `$XDG_RUNTIME_DIR/iphone-agent/frame.jpg` at ≤ N fps. The panel's LiveView reloads that tmpfs file
+  instead of pulling a full-resolution PNG `/screenshot` every 0.9 s.
 
 Build: `make -C c`. Verified on the phone: phone CLI end to end. Not yet: the MJPEG stream from our WDA build (needs the 9100 forward).
