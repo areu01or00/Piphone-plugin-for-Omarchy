@@ -41,9 +41,19 @@ export default function phoneExtension(pi: ExtensionAPI) {
     if (!grantBundle || grantBundle !== await client.activeApp()) return false;  // granted app is not foreground
     const where = String(p.where || "").trim().toLowerCase();
     if (!where) return true;                                   // empty where = any destination within the app
-    const snap = client.latest;                               // the snapshot the send_ref/field_ref came from
-    const hay = snap ? snap.elements.map(e => `${e.label} ${e.value}`).join("\n").toLowerCase() : "";
-    return hay.includes(where);                                // the named destination must be on that live screen
+    const snap = client.latest;                               // the snapshot field_ref/send_ref came from
+    const h = snap?.screen?.h || 0;
+    if (!snap || h <= 0) return false;                         // can't locate the header → fall through to approval
+    // Match the destination name only against the top navigation/header chrome,
+    // and never against editable inputs. A draft the agent typed (a field's
+    // value) or a search box must not be able to satisfy a per-destination
+    // grant, and a match deep in the message list doesn't count either — only
+    // the header that actually names the current destination does.
+    const editable = /TextField|TextView|SearchField/;
+    const hay = snap.elements
+      .filter(e => !e.offscreen && !editable.test(e.type) && e.rect.y < h * 0.15)
+      .map(e => `${e.label} ${e.value}`).join("\n").toLowerCase();
+    return hay.includes(where);
   };
   const reasonFor = (p: any) => p.intent || (p.reply_to ? `replying to ${p.reply_to.author}` : `posting to ${p.where || p.app}`);
   let busy = false, timer: NodeJS.Timeout | undefined, watched: { app: string; bundle: string; previous: Snapshot } | undefined;
