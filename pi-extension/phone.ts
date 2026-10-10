@@ -91,12 +91,14 @@ export default function phoneExtension(pi: ExtensionAPI) {
     const pb = await playbook(s.app); if (pb) payload.playbook = pb;
     return textResult(payload);
   }
-  // Defence in depth: refuse to act when the current screen is already out of
-  // scope. scoped() withholds out-of-scope outlines (so the model has no refs),
-  // and this stops any action from running against stale out-of-scope refs.
+  // Refuse to act unless the LIVE foreground app is in scope. Querying the real
+  // device (not the cached snapshot) closes the window where the phone switches
+  // apps after an allowed read — or during a posting-approval wait — before the
+  // action lands. Unknown/undeterminable foreground is refused, not allowed.
   const assertInScope = async () => {
-    const cur = client.latest?.app;
-    if (cur) { const err = await scopeError(cur); if (err) throw new Error(err); }
+    if (scope.length === 0) return;                 // unrestricted session
+    const err = await scopeError(await client.activeApp());
+    if (err) throw new Error(err);
   };
 
   pi.on("agent_start", () => { busy = true; });
@@ -314,9 +316,17 @@ export default function phoneExtension(pi: ExtensionAPI) {
       hardPolicy(p);
       const now = Date.now();
       if (mode === "auto") checkAutoLimits(hourlyPosts, sessionPosts, now, maxHour, maxSession);
-      const review = (mode === "ask" && !activeGrant(p.app, p.where))
+      const ask = (mode === "ask" && !activeGrant(p.app, p.where))
         ? async (pp: any) => ctx.ui.editor(`Post to ${pp.app} / ${pp.where} — ${reasonFor(pp)}`, pp.text)
         : async () => p.text;
+      // Re-assert scope after approval: the foreground could have changed while
+      // the editor was open; never send into an app that is now out of scope.
+      const review = async (pp: any) => {
+        const text = await ask(pp);
+        if (text === null || text === undefined || String(text).trim() === "") return text;
+        await assertInScope();
+        return text;
+      };
       const out = await guardedPost(client, p, review);
       if (out.posted) { hourlyPosts.push(now); sessionPosts++; }
       pi.appendEntry("phone-post-audit", { at: new Date().toISOString(), mode, app: p.app, where: p.where, reply_to: p.reply_to, text: out.text || p.text, outcome: out.posted ? "posted_verified" : "denied" });
@@ -331,7 +341,22 @@ export default function phoneExtension(pi: ExtensionAPI) {
       const bundle = await resolveBundle(p.app); if (!bundle) throw new Error("watch needs a known app name");
       const err = await scopeError(bundle); if (err) throw new Error(err);  // never relay out-of-scope ticks
       if (timer) clearInterval(timer); const previous = await client.screen(bundle); watched = { app: p.app, bundle, previous };
-      timer = setInterval(async () => { if (busy || !watched) return; try { if (await client.activeApp() !== watched.bundle) return; const next = await client.screen(watched.bundle); const added = newLabels(watched.previous, next); watched.previous = next; if (added.length) pi.sendMessage({ customType: "phone-watch", content: `${added.length} new item(s) in ${watched.app}:\n${added.slice(0, 12).join("\n")}`, display: true }, { triggerTurn: true, deliverAs: "followUp" }); } catch {} }, p.every_s * 1000);
+      timer = setInterval(async () => {
+        if (busy || !watched) return;
+        try {
+          // Scope can be narrowed (/phone-scope) after the watcher starts; re-check
+          // every tick and stop rather than relay now-out-of-scope labels.
+          if (await scopeError(watched.bundle)) {
+            const app = watched.app;
+            if (timer) clearInterval(timer); timer = undefined; watched = undefined;
+            pi.sendMessage({ customType: "phone-watch", content: `Stopped watching ${app}: it is no longer in the session scope.`, display: true }, { triggerTurn: true, deliverAs: "followUp" });
+            return;
+          }
+          if (await client.activeApp() !== watched.bundle) return;
+          const next = await client.screen(watched.bundle); const added = newLabels(watched.previous, next); watched.previous = next;
+          if (added.length) pi.sendMessage({ customType: "phone-watch", content: `${added.length} new item(s) in ${watched.app}:\n${added.slice(0, 12).join("\n")}`, display: true }, { triggerTurn: true, deliverAs: "followUp" });
+        } catch {}
+      }, p.every_s * 1000);
       return textResult({ watching: p.app, every_s: p.every_s, fingerprint: previous.fingerprint });
     },
   }));

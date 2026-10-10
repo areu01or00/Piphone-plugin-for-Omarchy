@@ -19,9 +19,17 @@ fetches it from the module proxy — no local checkout needed.
 
 ## Run
 
+The supervisor must run inside a private network namespace (`PrivateNetwork=yes`) so the userspace
+tunnel's internal localhost listener is not exposed to other local users. Run it through the user
+service, or — for development — via `systemd-run`, never as a bare `./iphone-wdad`:
+
 ```bash
-./iphone-wdad                                   # uses $IPHONE_WDA_RUNNER if set
-./iphone-wdad -runner com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>
+# Normal use: the installed user service (already PrivateNetwork=yes). See ## systemd below.
+systemctl --user start iphone-wdad.service
+
+# Development, without installing the unit — still isolated:
+systemd-run --user -p PrivateNetwork=yes --pty \
+  ./iphone-wdad -runner com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>
 ```
 
 The runner bundle id ends in **your** Apple Team ID — the one the WDA IPA was signed with. Pass it with
@@ -42,7 +50,8 @@ Logs go to stderr and never contain screen content.
   `com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>`, xctestconfig `WebDriverAgentRunner.xctest`.
 - **Self-healing loop:** no device → `no_phone`; attach failure → `error`; an unplug watchdog cancels the
   run and the loop waits for the next device.
-- Forwarding is a small localhost-bound proxy over usbmux, so WDA HTTP is only exposed on loopback.
+- Forwarding is a small proxy over usbmux that serves WDA/MJPEG on the owner-only Unix sockets above;
+  with `PrivateNetwork=yes` the tunnel's internal localhost listener stays inside the unit's namespace.
 
 ## systemd
 
