@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+name=iphone
+if tmux has-session -t "$name" 2>/dev/null; then
+  exec tmux attach-session -t "$name"
+fi
+cmd="cd $(printf %q "$repo") && exec pi --model openrouter/deepseek/deepseek-v4.1-flash -ne -ns -e $(printf %q "$repo/pi-extension/phone.ts") --session-dir $(printf %q "$HOME/.local/share/iphone-agent/pi-sessions")"
+tmux new-session -s "$name" "$cmd"

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "areu01or00.piphone",
+  "name": "Piphone",
+  "version": "2.0.0",
+  "author": "areu01or00",
+  "license": "MIT",
+  "description": "Hand your iPhone a mandate and let a Pi agent run it over WebDriverAgent.",
+  "keywords": [
+    "iphone",
+    "agent",
+    "pi",
+    "wda",
+    "automation"
+  ],
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "omarchy-plugin/Service.qml",
+    "panel": "omarchy-plugin/IPhoneAgent.qml",
+    "barWidget": "omarchy-plugin/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Piphone",
+    "description": "Pi sessions driving your iPhone",
+    "category": "Automation",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

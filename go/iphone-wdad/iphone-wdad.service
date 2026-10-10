@@ -1,0 +1,12 @@
+[Unit]
+Description=iPhone WebDriverAgent (native, go-ios)
+After=usbmuxd.service
+
+[Service]
+Type=simple
+ExecStart=%h/.config/omarchy/plugins/areu01or00.piphone/go/iphone-wdad/iphone-wdad
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

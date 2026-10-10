@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Compiled binaries (build locally or fetch from Releases)
+go/iphone-wdad/iphone-wdad
+c/phone
+c/mjpeg-tap
+
+# Node / TS
+node_modules/
+
+# Runtime / local
+bookmarks/
+*.log
+.DS_Store

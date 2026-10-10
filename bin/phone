@@ -1,0 +1,24 @@
+#!/usr/bin/env -S node --experimental-strip-types
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { WdaClient, assertSafeTap } from "../pi-extension/phone-core.ts";
+
+const dir = `${process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`}/iphone-agent`;
+const file = `${dir}/cli.json`, tmp = `${file}.tmp`;
+const apps = { x: "com.atebits.Tweetie2", twitter: "com.atebits.Tweetie2", discord: "com.hammerandchisel.discord", linkedin: "com.linkedin.LinkedIn", settings: "com.apple.Preferences", messages: "com.apple.MobileSMS", safari: "com.apple.mobilesafari", mail: "com.apple.mobilemail" };
+const client = new WdaClient();
+try { client.restore(JSON.parse(await readFile(file, "utf8"))); } catch {}
+const [command, arg, ...rest] = process.argv.slice(2);
+let snapshot, prefix = "";
+switch (command) {
+  case "screen": snapshot = await client.screen(); break;
+  case "tap": { const ref = +arg; assertSafeTap(client.ref(ref)); snapshot = await client.tap(ref); break; }
+  case "type": { const out = await client.type(+arg, rest.join(" ")); prefix = `exact=${out.exact} value=${JSON.stringify(out.value)}\n`; snapshot = out.screen; break; }
+  case "scroll": if (arg !== "up" && arg !== "down") throw Error("scroll needs up|down"); else snapshot = await client.scroll(arg); break;
+  case "open": { const bundle = apps[arg?.toLowerCase()]; if (!bundle) throw Error(`unknown app: ${arg}`); snapshot = await client.open(bundle); break; }
+  case "home": snapshot = await client.home(); break;
+  case "look": { const data = await client.screenshot(); const path = `${dir}/cli-look.png`; await mkdir(dir, { recursive: true }); await writeFile(path, Buffer.from(data, "base64"), { mode: 0o600 }); snapshot = client.latest || await client.screen(); prefix = `screenshot=${path}\n`; break; }
+  default: throw Error("usage: phone {screen|tap REF|type REF TEXT|scroll up|down|open APP|home|look}");
+}
+await mkdir(dir, { recursive: true });
+await writeFile(tmp, JSON.stringify(client.state()), { mode: 0o600 }); await chmod(tmp, 0o600); await rename(tmp, file);
+console.log(prefix + snapshot.outline);
