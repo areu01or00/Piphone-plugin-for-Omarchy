@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -42,14 +43,19 @@ static void bprintf(buf *b, const char *fmt, ...) {
 static double now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
 static void sleep_ms(int ms) { struct timespec t = { ms / 1000, (ms % 1000) * 1000000L }; nanosleep(&t, 0); }
 
-// ── HTTP (plain, loopback) ───────────────────────────────────────────────
+// ── HTTP (plain, over the owner-only WDA Unix socket) ─────────────────────
 static int http(const char *method, const char *path, const char *body, buf *out) {
-  int port = getenv("IPHONE_WDA_PORT") ? atoi(getenv("IPHONE_WDA_PORT")) : 8100;
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(port) };
-  inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+  char sp[512];
+  const char *env = getenv("IPHONE_WDA_SOCK");
+  const char *rt = getenv("XDG_RUNTIME_DIR");
+  if (env) snprintf(sp, sizeof sp, "%s", env);
+  else if (rt) snprintf(sp, sizeof sp, "%s/iphone-agent/wda.sock", rt);
+  else snprintf(sp, sizeof sp, "/run/user/%d/iphone-agent/wda.sock", getuid());
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  struct sockaddr_un a = { .sun_family = AF_UNIX };
+  strncpy(a.sun_path, sp, sizeof a.sun_path - 1);
   struct timeval tv = { 30, 0 }; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-  if (connect(fd, (void *)&a, sizeof a)) die("WDA not reachable on 127.0.0.1:%d (is the phone plugged in?)", port);
+  if (connect(fd, (void *)&a, sizeof a)) die("WDA not reachable at %s (is the phone plugged in?)", sp);
   buf req = {0}; size_t bl = body ? strlen(body) : 0;
   bprintf(&req, "%s %s HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n", method, path);
   if (body) bprintf(&req, "Content-Type: application/json\r\nContent-Length: %zu\r\n", bl);

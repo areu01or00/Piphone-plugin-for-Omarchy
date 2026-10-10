@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { request as httpRequest } from "node:http";
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Element = { ref: number; type: string; label: string; value: string; rect: Rect; offscreen?: boolean };
@@ -53,8 +54,10 @@ export class WdaClient {
   private bundle = "";
   private generation = 0;
   latest?: Snapshot;
-  base: string;
-  constructor(base = process.env.IPHONE_WDA_URL || "http://127.0.0.1:8100") { this.base = base; }
+  sock: string;
+  // WDA is reached over an owner-only Unix socket (0600 in $XDG_RUNTIME_DIR),
+  // not a loopback TCP port any local user could connect to.
+  constructor(sock = process.env.IPHONE_WDA_SOCK || `${process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`}/iphone-agent/wda.sock`) { this.sock = sock; }
   restore(state: { sessionId?: string; bundle?: string; generation?: number; latest?: Snapshot }) {
     this.session = state.sessionId || ""; this.bundle = state.bundle || ""; this.generation = state.generation || 0; this.latest = state.latest;
   }
@@ -62,11 +65,29 @@ export class WdaClient {
   async request(path: string, body?: unknown, method?: string): Promise<any> {
     return this.fetchOnce(path, body, method, true);
   }
+  private httpOverSocket(path: string, body: unknown, method: string | undefined): Promise<{ status: number; json: any }> {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    return new Promise((resolve, reject) => {
+      const req = httpRequest({
+        socketPath: this.sock, path, method: method || (body === undefined ? "GET" : "POST"),
+        headers: payload === undefined ? {} : { "content-type": "application/json", "content-length": Buffer.byteLength(payload) },
+        timeout: 20000,
+      }, (res) => {
+        let data = ""; res.setEncoding("utf8");
+        res.on("data", (c) => { data += c; });
+        res.on("end", () => { let json: any = {}; try { json = JSON.parse(data); } catch { /* non-JSON */ } resolve({ status: res.statusCode || 0, json }); });
+      });
+      req.on("error", reject);
+      req.on("timeout", () => req.destroy(new Error(`WDA timeout ${path}`)));
+      if (payload !== undefined) req.write(payload);
+      req.end();
+    });
+  }
   private async fetchOnce(path: string, body: unknown, method: string | undefined, recover: boolean): Promise<any> {
-    const r = await fetch(this.base + path, { method: method || (body === undefined ? "GET" : "POST"), headers: body === undefined ? {} : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) });
-    const j = await r.json().catch(() => ({}));
-    const message: string = j.value?.message || `WDA ${r.status} ${path}`;
-    if (!r.ok || j.value?.error) {
+    const { status, json: j } = await this.httpOverSocket(path, body, method);
+    const ok = status >= 200 && status < 300;
+    const message: string = j.value?.message || `WDA ${status} ${path}`;
+    if (!ok || j.value?.error) {
       // Stale-session recovery: drop the session once and retry transparently.
       if (recover && this.session && /invalid session|session.*(not found|does not exist|unknown)|no such session/i.test(message)) {
         this.session = ""; this.bundle = ""; await sleep(150);

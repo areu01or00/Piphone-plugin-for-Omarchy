@@ -40,7 +40,7 @@ type appRow struct {
 	Bundle string `json:"bundle"`
 }
 
-var statusPath, appsPath string
+var statusPath, appsPath, wdaSockPath, mjpegSockPath string
 
 func writeAtomic(path string, v any) {
 	b, _ := json.Marshal(v)
@@ -106,12 +106,16 @@ func writeApps(device ios.DeviceEntry) {
 	writeAtomic(appsPath, rows)
 }
 
-// forwardLocal forwards 127.0.0.1:hostPort to the device's phonePort via usbmux.
-func forwardLocal(deviceID int, hostPort, phonePort uint16) (func(), error) {
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", hostPort))
+// forwardLocal forwards an owner-only Unix socket to the device's phonePort via
+// usbmux. A Unix socket in $XDG_RUNTIME_DIR (0700) chmod'd 0600 is reachable only
+// by the owning user — unlike a loopback TCP port, which any local UID can open.
+func forwardLocal(deviceID int, sockPath string, phonePort uint16) (func(), error) {
+	_ = os.Remove(sockPath) // clear a stale socket from a previous run
+	l, err := net.Listen("unix", sockPath)
 	if err != nil {
 		return func() {}, err
 	}
+	_ = os.Chmod(sockPath, 0o600)
 	go func() {
 		for {
 			client, err := l.Accept()
@@ -138,11 +142,14 @@ func forwardLocal(deviceID int, hostPort, phonePort uint16) (func(), error) {
 			}(client)
 		}
 	}()
-	return func() { _ = l.Close() }, nil
+	return func() { _ = l.Close(); _ = os.Remove(sockPath) }, nil
 }
 func wdaReady() bool {
-	client := http.Client{Timeout: time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/status", wdaPort))
+	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", wdaSockPath)
+	}}
+	client := http.Client{Timeout: time.Second, Transport: tr}
+	resp, err := client.Get("http://wda/status")
 	if err != nil {
 		return false
 	}
@@ -183,12 +190,12 @@ func runOnce(ctx context.Context, device ios.DeviceEntry, runner string) error {
 	rsdDevice.UserspaceTUNHost = "127.0.0.1"
 	rsdDevice.UserspaceTUNPort = ifacePort
 
-	stopWDA, err := forwardLocal(device.DeviceID, wdaPort, wdaPort)
+	stopWDA, err := forwardLocal(device.DeviceID, wdaSockPath, wdaPort)
 	if err != nil {
 		return fmt.Errorf("forward %d: %w", wdaPort, err)
 	}
 	defer stopWDA()
-	stopMJPEG, err := forwardLocal(device.DeviceID, mjpegPort, mjpegPort)
+	stopMJPEG, err := forwardLocal(device.DeviceID, mjpegSockPath, mjpegPort)
 	if err != nil {
 		return fmt.Errorf("forward %d: %w", mjpegPort, err)
 	}
@@ -270,6 +277,8 @@ func main() {
 	}
 	statusPath = filepath.Join(dir, "wda.json")
 	appsPath = filepath.Join(dir, "apps.json")
+	wdaSockPath = filepath.Join(dir, "wda.sock")
+	mjpegSockPath = filepath.Join(dir, "mjpeg.sock")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

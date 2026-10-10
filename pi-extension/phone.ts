@@ -1,14 +1,15 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { WdaClient, assertSafeTap, checkAutoLimits, elementKey, guardedPost, hardPolicy, newLabels, type Snapshot } from "./phone-core.ts";
 
 const run = promisify(execFile);
 const home = process.env.HOME || "";
 const runtime = () => `${process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`}/iphone-agent`;
-const profilePath = `${home}/.local/share/iphone-agent/profile.md`;
+const dataDir = `${home}/.local/share/iphone-agent`;
+const profilePath = `${dataDir}/profile.md`;
 const builtin: Record<string, string> = {
   x: "com.atebits.Tweetie2", twitter: "com.atebits.Tweetie2", discord: "com.hammerandchisel.discord",
   linkedin: "com.linkedin.LinkedIn", settings: "com.apple.Preferences", messages: "com.apple.MobileSMS",
@@ -207,7 +208,12 @@ export default function phoneExtension(pi: ExtensionAPI) {
     async execute(_id, p) {
       const fact = String(p.fact || "").trim();
       if (!fact) return textResult({ remembered: false });
+      // Private memory: keep the data dir owner-only and repair perms on an
+      // existing profile.md (appendFile's mode only applies on creation).
+      await mkdir(dataDir, { recursive: true });
+      await chmod(dataDir, 0o700).catch(() => {});
       await appendFile(profilePath, `- ${fact}\n`, { mode: 0o600 });
+      await chmod(profilePath, 0o600).catch(() => {});
       return textResult({ remembered: fact });
     },
   }));

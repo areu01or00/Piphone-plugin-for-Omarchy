@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -21,13 +22,13 @@ static volatile sig_atomic_t stop;
 static void on_signal(int s) { (void)s; stop = 1; }
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 
-static int dial(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(port) };
-  inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+static int dial(const char *sockpath) {
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  struct sockaddr_un a = { .sun_family = AF_UNIX };
+  strncpy(a.sun_path, sockpath, sizeof a.sun_path - 1);
   struct timeval tv = { 5, 0 }; setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   if (connect(fd, (void *)&a, sizeof a)) { close(fd); return -1; }
-  const char *req = "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+  const char *req = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
   if (write(fd, req, strlen(req)) < 0) { close(fd); return -1; }
   return fd;
 }
@@ -40,16 +41,19 @@ static void publish(const unsigned char *jpg, size_t n) {
 
 int main(int argc, char **argv) {
   double fps = argc > 1 ? atof(argv[1]) : 4; if (fps <= 0) fps = 4;
-  int port = getenv("IPHONE_MJPEG_PORT") ? atoi(getenv("IPHONE_MJPEG_PORT")) : 9100;
   const char *rt = getenv("XDG_RUNTIME_DIR"); char dir[480];
   if (rt) snprintf(dir, sizeof dir, "%s/iphone-agent", rt); else snprintf(dir, sizeof dir, "/run/user/%d/iphone-agent", getuid());
   mkdir(dir, 0700); snprintf(out, sizeof out, "%s/frame.jpg", dir); snprintf(tmp, sizeof tmp, "%s.tmp", out);
+  // MJPEG is served over the owner-only Unix socket (0600), not a loopback port.
+  char sock[512];
+  if (getenv("IPHONE_MJPEG_SOCK")) snprintf(sock, sizeof sock, "%s", getenv("IPHONE_MJPEG_SOCK"));
+  else snprintf(sock, sizeof sock, "%s/mjpeg.sock", dir);
   signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
 
   size_t cap = 4 << 20; unsigned char *b = malloc(cap);
   double last = 0; int backoff = 1;
   while (!stop) {
-    int fd = dial(port);
+    int fd = dial(sock);
     if (fd < 0) { sleep(backoff); backoff = backoff < 8 ? backoff * 2 : 8; continue; }
     backoff = 1; size_t n = 0; ssize_t r;
     while (!stop && (r = read(fd, b + n, cap - n)) > 0) {

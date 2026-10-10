@@ -396,7 +396,7 @@ Item {
     if (action === "home") {
       actionProc.command = ["bash", "-lc", root.agentRepo + "/bin/phone home >/dev/null 2>&1"]
     } else if (action === "screenshot") {
-      actionProc.command = ["bash", "-lc", 'mkdir -p "$1" && curl -s --max-time 10 127.0.0.1:8100/screenshot | jq -r .value | base64 -d > "$1/iPhone-$(date +%Y%m%d-%H%M%S).png"', "_", root.home + "/Pictures"]
+      actionProc.command = ["bash", "-lc", 'mkdir -p "$1" && curl -s --max-time 10 --unix-socket "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/iphone-agent/wda.sock" http://localhost/screenshot | jq -r .value | base64 -d > "$1/iPhone-$(date +%Y%m%d-%H%M%S).png"', "_", root.home + "/Pictures"]
     } else if (action === "mirror") {
       actionProc.command = ["bash", "-lc", "systemctl --user is-active iphone-wdad.service >/dev/null || systemctl --user start iphone-wdad.service"]
     } else return
@@ -535,13 +535,16 @@ Item {
 
   function saveProfile(text) {
     root.profileText = String(text)
-    profileWriter.command = ["bash", "-c", "printf %s \"$1\" > \"$2\"", "_", root.profileText, root.profilePath]
+    // Private memory: never put the profile in argv (visible in `ps` to other
+    // users). Pipe it through stdin, and keep the dir/file owner-only (0700/0600),
+    // repairing perms if the file pre-existed with a looser mask.
+    profileWriter.command = ["bash", "-c", 'f="$1"; d=$(dirname "$f"); mkdir -p "$d"; chmod 700 "$d" 2>/dev/null; umask 177; cat > "$f"; chmod 600 "$f"', "_", root.profilePath]
     if (!profileWriter.running) profileWriter.running = true
   }
 
   Process { id: stateWriter; command: ["bash", "-c", "printf %s \"$1\" > \"$2\"", "_", root.pendingState, root.uiStatePath] }
   Process { id: modelWriter; command: [] }
-  Process { id: profileWriter; command: [] }
+  Process { id: profileWriter; command: []; stdinEnabled: true; onStarted: { write(root.profileText); stdinEnabled = false } }
   Process { id: notifyProc; command: [] }
   Process { id: actionProc; command: [] }
   Process { id: archiveProc; command: [] }

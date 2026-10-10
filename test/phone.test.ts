@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { compressSource, WdaClient, assertSafeTap, checkAutoLimits, guardedPost, hardPolicy, newLabels } from "../pi-extension/phone-core.ts";
 
@@ -20,10 +23,10 @@ before(async () => {
     else if (path.endsWith("/click")) { currentXml = xml(`<XCUIElementTypeStaticText type="XCUIElementTypeStaticText" label="${typed}" x="10" y="500" width="300" height="40"/>`); value = null; }
     res.end(JSON.stringify({ value }));
   });
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  base = `http://127.0.0.1:${(server.address() as any).port}`;
+  base = join(tmpdir(), `wda-test-${process.pid}-${Date.now()}.sock`);
+  await new Promise<void>(resolve => server.listen(base, resolve));
 });
-after(() => server.close());
+after(() => { server.close(); rmSync(base, { force: true }); });
 
 function reset() { calls = []; bodies = []; typed = ""; currentXml = xml(); }
 
