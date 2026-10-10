@@ -73,8 +73,12 @@ export default function phoneExtension(pi: ExtensionAPI) {
     try { const text = (await readFile(`${import.meta.dirname}/playbooks/${key}.md`, "utf8")).trim(); injectedPlaybooks.add(key); return text; }
     catch { return undefined; }
   }
-  // Every action result: change line (loop-breaker) + optional playbook + scope check.
+  // Every action result: enforce app scope FIRST — an out-of-scope screen is
+  // refused outright (its outline is never returned to the model), not sent
+  // with a warning — then change line (loop-breaker) + optional playbook.
   async function scoped(s: Snapshot, extra: any = {}, isAction = false) {
+    const err = await scopeError(s.app);
+    if (err) { lastKeys = new Set(); noChangeStreak = 0; return textResult({ scope_error: err, app: s.app, outline_withheld: true }); }
     const keys = new Set(s.elements.map(elementKey));
     let added = 0, removed = 0;
     for (const k of keys) if (!lastKeys.has(k)) added++;
@@ -85,9 +89,15 @@ export default function phoneExtension(pi: ExtensionAPI) {
     const payload: any = { changed, change_line: changed ? `Changed: yes (+${added} / −${removed} elements)` : "Changed: NO — the action had no visible effect; change approach or ask the user", ...extra, ...clean(s) };
     if (isAction && noChangeStreak >= 2) payload.loop_warning = `No visible change after ${noChangeStreak} actions. Stop retrying this goal; change approach or ask the user.`;
     const pb = await playbook(s.app); if (pb) payload.playbook = pb;
-    const err = await scopeError(s.app); if (err) payload.scope_error = err;
     return textResult(payload);
   }
+  // Defence in depth: refuse to act when the current screen is already out of
+  // scope. scoped() withholds out-of-scope outlines (so the model has no refs),
+  // and this stops any action from running against stale out-of-scope refs.
+  const assertInScope = async () => {
+    const cur = client.latest?.app;
+    if (cur) { const err = await scopeError(cur); if (err) throw new Error(err); }
+  };
 
   pi.on("agent_start", () => { busy = true; });
   pi.on("agent_end", () => { busy = false; });
@@ -237,13 +247,14 @@ export default function phoneExtension(pi: ExtensionAPI) {
   pi.registerTool(defineTool({
     name: "phone_tap", label: "Tap iPhone element", description: "Tap a current ref, except outward/destructive controls, and return a fresh outline. Offscreen refs must be scrolled into view first.",
     parameters: Type.Object({ ref: Type.Integer({ minimum: 1 }) }),
-    async execute(_id, p) { assertSafeTap(client.ref(p.ref)); return scoped(await client.tap(p.ref), {}, true); },
+    async execute(_id, p) { await assertInScope(); assertSafeTap(client.ref(p.ref)); return scoped(await client.tap(p.ref), {}, true); },
   }));
 
   pi.registerTool(defineTool({
     name: "phone_type", label: "Type on iPhone", description: "Focus a field, wait for the keyboard, clear, insert exact Unicode via paste/keys, verify the exact readback and the foreground app. Any mismatch is an error and nothing further is typed.",
     parameters: Type.Object({ ref: Type.Integer({ minimum: 1 }), text: Type.String() }),
     async execute(_id, p) {
+      await assertInScope();
       const v = await client.type(p.ref, p.text);
       if (!v.exact) throw new Error((v as any).error || `exact text mismatch (read back ${JSON.stringify(v.value)})`);
       return scoped(v.screen, { exact: true, value: v.value, inserted_via: (v as any).path || "keys" }, true);
@@ -253,7 +264,7 @@ export default function phoneExtension(pi: ExtensionAPI) {
   pi.registerTool(defineTool({
     name: "phone_scroll", label: "Scroll iPhone", description: "Swipe the current screen and return a fresh outline.",
     parameters: Type.Object({ direction: Type.Union([Type.Literal("up"), Type.Literal("down")]) }),
-    async execute(_id, p) { return scoped(await client.scroll(p.direction), {}, true); },
+    async execute(_id, p) { await assertInScope(); return scoped(await client.scroll(p.direction), {}, true); },
   }));
 
   pi.registerTool(defineTool({
@@ -275,13 +286,17 @@ export default function phoneExtension(pi: ExtensionAPI) {
 
   pi.registerTool(defineTool({
     name: "phone_back", label: "iPhone Back", description: "Tap a visible Back control and return a fresh outline; errors if none exists.", parameters: Type.Object({}),
-    async execute() { const s = client.latest || await client.screen(); const back = s.elements.find(e => /^(back|cancel|close)$/i.test(e.label)); if (!back) throw new Error("no feasible visible Back/Cancel/Close control; inspect the latest outline"); return scoped(await client.tap(back.ref), {}, true); },
+    async execute() { await assertInScope(); const s = client.latest || await client.screen(); const back = s.elements.find(e => /^(back|cancel|close)$/i.test(e.label)); if (!back) throw new Error("no feasible visible Back/Cancel/Close control; inspect the latest outline"); return scoped(await client.tap(back.ref), {}, true); },
   }));
 
   pi.registerTool(defineTool({
     name: "phone_look", label: "Inspect iPhone screenshot", description: "Downscaled screenshot for visual inspection only. Give a reason; continue acting by refs, never coordinates.",
     parameters: Type.Object({ reason: Type.String() }),
     async execute() {
+      // A screenshot discloses whatever is foreground: refuse if it's out of scope.
+      const active = await client.activeApp();
+      const err = await scopeError(active);
+      if (err) return textResult({ scope_error: err, app: active, screenshot_withheld: true });
       await mkdir(runtime(), { recursive: true });
       const src = `${runtime()}/look.png`, dst = `${runtime()}/look.jpg`;
       await writeFile(src, Buffer.from(await client.screenshot(), "base64"));
@@ -295,6 +310,7 @@ export default function phoneExtension(pi: ExtensionAPI) {
     name: "phone_post", label: "Post outward text", description: "The only outward text path: enforce policy, ask you to approve/edit, verify exact text, tap send, verify appearance, and audit.",
     parameters: Type.Object({ field_ref: Type.Integer(), text: Type.String(), send_ref: Type.Integer(), app: Type.String(), where: Type.String(), intent: Type.Optional(Type.String()), reply_to: Type.Optional(Type.Object({ author: Type.String(), text: Type.String() })), is_dm: Type.Optional(Type.Boolean()), recipient_known: Type.Optional(Type.Boolean()) }),
     async execute(_id, p, _signal, _update, ctx) {
+      await assertInScope();
       hardPolicy(p);
       const now = Date.now();
       if (mode === "auto") checkAutoLimits(hourlyPosts, sessionPosts, now, maxHour, maxSession);
@@ -313,6 +329,7 @@ export default function phoneExtension(pi: ExtensionAPI) {
     parameters: Type.Object({ app: Type.String(), every_s: Type.Integer({ minimum: 5, maximum: 3600 }) }),
     async execute(_id, p) {
       const bundle = await resolveBundle(p.app); if (!bundle) throw new Error("watch needs a known app name");
+      const err = await scopeError(bundle); if (err) throw new Error(err);  // never relay out-of-scope ticks
       if (timer) clearInterval(timer); const previous = await client.screen(bundle); watched = { app: p.app, bundle, previous };
       timer = setInterval(async () => { if (busy || !watched) return; try { if (await client.activeApp() !== watched.bundle) return; const next = await client.screen(watched.bundle); const added = newLabels(watched.previous, next); watched.previous = next; if (added.length) pi.sendMessage({ customType: "phone-watch", content: `${added.length} new item(s) in ${watched.app}:\n${added.slice(0, 12).join("\n")}`, display: true }, { triggerTurn: true, deliverAs: "followUp" }); } catch {} }, p.every_s * 1000);
       return textResult({ watching: p.app, every_s: p.every_s, fingerprint: previous.fingerprint });
