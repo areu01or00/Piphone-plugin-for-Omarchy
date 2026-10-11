@@ -188,12 +188,14 @@ Item {
             radius: Style.space(8); color: Util.alpha(root.bg, 0.55)
             border.width: editArea.activeFocus ? 1 : 0; border.color: Util.alpha(root.accent, 0.7)
           }
-          // Route paste through the bounded reader; never Qt's native unbounded read.
+          // Route every paste binding (Ctrl+V, Shift/Ctrl+Shift+Insert, F18, Paste key) through the bounded reader.
           Keys.onPressed: function(e) {
-            if ((e.key === Qt.Key_V && (e.modifiers & Qt.ControlModifier)) || (e.key === Qt.Key_Insert && (e.modifiers & Qt.ShiftModifier))) { clipEdit.paste(false); e.accepted = true }
+            if (e.matches(StandardKey.Paste)) { clipEdit.paste(false); e.accepted = true }
           }
           // Backstop: clamp retained length (bounded paste already caps the read).
           onTextChanged: if (length > 8000) remove(8000, length)
+          // No native context menu: its Paste action reads the clipboard unbounded.
+          QQC.ContextMenu.menu: null
           BoundedClipboard { id: clipEdit }
         }
         Rectangle {

@@ -147,3 +147,11 @@ test("watcher-style diff emits a new label exactly once", () => {
   assert.deepEqual(newLabels(a, b), ["new message"]);
   assert.deepEqual(newLabels(b, b), []);
 });
+
+test("oversized screens are capped so one outline can't flood the model or panel", () => {
+  const rows = Array.from({ length: 5000 }, (_, i) => `<XCUIElementTypeStaticText type="XCUIElementTypeStaticText" label="${"x".repeat(200)}${i}" x="0" y="${i}" width="5" height="5"/>`).join("");
+  const s = compressSource(`<XCUIElementTypeApplication type="XCUIElementTypeApplication" x="0" y="0" width="10" height="10">${rows}</XCUIElementTypeApplication>`, "com.test");
+  assert.ok(s.outline.length < 201_000);
+  assert.match(s.outline, /more elements omitted/);
+  assert.ok(s.elements.length < 5000 && s.outline.includes(`[${s.elements.at(-1)!.ref}]`));
+});

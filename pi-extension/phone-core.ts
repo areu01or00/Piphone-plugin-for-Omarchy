@@ -7,6 +7,8 @@ export type Snapshot = { app: string; fingerprint: string; outline: string; elem
 
 const excluded = "visible,accessible,enabled,index,focused,placeholderValue,hittable";
 const labelCap = 1000;
+// Whole-outline cap: a huge page can't flood the model or the panel (which buffers each event line).
+const outlineCap = 200_000;
 // Full snapshot every read. 200 is the practical WDA maximum; override only for debugging.
 const snapshotDepth = () => +(process.env.IPHONE_SNAPSHOT_DEPTH || 200);
 // Pure icon asset identifiers carry no usable content.
@@ -44,6 +46,11 @@ export function compressSource(xml: string, app: string, generation = 0): Snapsh
     elements.push({ ref: generation * 100000 + elements.length + 1, type: e.type, label: e.label, value: e.value, rect: e.rect, offscreen });
   }
   const lines = elements.map(e => `[${e.ref}] ${e.type}${e.label ? ` "${e.label.replaceAll('"', "'")}"` : ""}${e.value && e.value !== e.label ? ` = "${e.value.replaceAll('"', "'")}"` : ""}${e.offscreen ? " (offscreen)" : ""}`);
+  let used = 0, keep = lines.length;
+  for (let i = 0; i < lines.length; i++) if ((used += lines[i].length + 1) > outlineCap) { keep = i; break; }
+  const omitted = lines.length - keep;
+  elements.length = keep; lines.length = keep;
+  if (omitted) lines.push(`(${omitted} more elements omitted: screen too large; scroll to reach them)`);
   const semantic = elements.map(e => `${e.type}\0${e.label}\0${e.value}`).join("\n");
   const fingerprint = createHash("sha256").update(app + "\0" + semantic).digest("hex").slice(0, 16);
   return { app, fingerprint, outline: `App: ${app}\nFingerprint: ${fingerprint}\n${lines.join("\n") || "(no useful elements)"}`, elements, screen };

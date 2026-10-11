@@ -4,12 +4,12 @@ import qs.Commons
 import qs.Ui
 
 // Adapted from Omarchy's qs.Ui.SearchableDropdown (/usr/share/omarchy/shell/Ui)
-// with one change: the embedded search field routes paste through
-// BoundedClipboard instead of Qt's native Wayland clipboard read, so a
-// streaming clipboard source can't exhaust memory and hang the shared shell.
+// with one change: the embedded search field is a BoundedLineField instead of
+// a native TextField, so the shell never reads foreign Wayland clipboard data
+// unbounded (see BoundedLineField.qml) and a streaming source can't hang it.
 //
 // Searchable single-select dropdown. Same trigger shape as Dropdown, but
-// the popup leads with an embedded TextField that filters the option
+// the popup leads with an embedded search field that filters the option
 // list in real time. Use for pickers with enough options that scanning
 // is friction.
 //
@@ -78,13 +78,13 @@ Item {
 
   property var filtered: options
   function recomputeFiltered() {
-    var q = searchField.text.toLowerCase()
-    if (!q) { filtered = options; return }
+    // Every typed word must appear somewhere ("glm flash" finds glm-5.3-flash).
+    var words = searchField.text.toLowerCase().split(/[\s\-_\/]+/).filter(function(w) { return w.length })
+    if (!words.length) { filtered = options; return }
     var out = []
     for (var i = 0; i < options.length; i++) {
-      var lbl = optionLabel(options[i]).toLowerCase()
-      var desc = optionDescription(options[i]).toLowerCase()
-      if (lbl.indexOf(q) !== -1 || desc.indexOf(q) !== -1) out.push(options[i])
+      var hay = (optionLabel(options[i]) + " " + optionDescription(options[i])).toLowerCase()
+      if (words.every(function(w) { return hay.indexOf(w) !== -1 })) out.push(options[i])
     }
     filtered = out
   }
@@ -208,10 +208,11 @@ Item {
             width: parent.width
             height: root.popupRowHeight + Style.spacing.controlPaddingX
 
-            TextField {
+            BoundedLineField {
               id: searchField
               anchors.fill: parent
               anchors.margins: Style.spacing.md
+              wrapMode: TextEdit.NoWrap
               placeholderText: root.placeholderText
               foreground: root.foreground
               accent: root.accent
@@ -223,29 +224,20 @@ Item {
                 if (resultList.count > 0) resultList.currentIndex = 0
               }
 
-              Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                  popup.close(); event.accepted = true
-                } else if (event.key === Qt.Key_Down) {
-                  if (resultList.count > 0) {
-                    resultList.currentIndex = 0
-                    resultList.forceActiveFocus()
-                  }
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  if (resultList.count > 0) {
-                    resultList.currentIndex = 0
-                    resultList.selectCurrent()
-                  }
-                  event.accepted = true
-                } else if ((event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier))
-                           || (event.key === Qt.Key_Insert && (event.modifiers & Qt.ShiftModifier))) {
-                  // Route paste through the bounded reader, never Qt's native unbounded read.
-                  searchClip.paste(false); event.accepted = true
+              onAccepted: {
+                if (resultList.count > 0) {
+                  resultList.currentIndex = 0
+                  resultList.selectCurrent()
                 }
               }
-
-              BoundedClipboard { id: searchClip }
+              Keys.onEscapePressed: function(event) { popup.close(); event.accepted = true }
+              Keys.onDownPressed: function(event) {
+                if (resultList.count > 0) {
+                  resultList.currentIndex = 0
+                  resultList.forceActiveFocus()
+                }
+                event.accepted = true
+              }
             }
           }
 
