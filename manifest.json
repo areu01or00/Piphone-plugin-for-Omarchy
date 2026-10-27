@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "areu01or00.piphone",
   "name": "Piphone",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "areu01or00",
   "license": "MIT",
   "description": "Hand your iPhone a mandate and let a Pi agent run it over WebDriverAgent.",

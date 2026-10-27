@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Re-sign WDA after Impactor has renewed the provisioning profile.
+# LEGACY. Re-sign WDA after Impactor renewed the provisioning profile.
+# Apple's 2026 anisette change (-80045) broke Impactor's login, so this path no
+# longer works on its own. Prefer signing with xtool (see wda/README.md).
 set -euo pipefail
 umask 077
 

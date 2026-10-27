@@ -56,7 +56,7 @@ iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────�
 - **`omarchy-plugin/`** — the Quickshell plugin: `Service.qml` owns sessions, `IPhoneAgent.qml` is the
   panel, `BarWidget.qml` the bar icon.
 - **`c/`** — a libc-only diagnostic CLI (`phone`) and an MJPEG frame tap.
-- **`wda/`** — WebDriverAgent signing: `resign.sh` renews the free provisioning profile each week.
+- **`wda/`** — WebDriverAgent signing notes: sign the runner with [xtool](https://github.com/xtool-org/xtool) (free Apple ID, 7-day profile).
 
 ## Requirements
 
@@ -68,7 +68,7 @@ iphone-wdad  (go/iphone-wdad) ── userspace tunnel ────────�
 - **Go 1.26+** and a **C toolchain** to build the supervisor and the `c/` tools (`install.sh` does this).
 - **`wl-clipboard`** (`wl-paste`) — the panel reads the clipboard through it with a hard byte cap, so a
   paste never triggers an unbounded read inside the shared shell.
-- `pymobiledevice3` only when you re-sign WebDriverAgent with `wda/resign.sh`.
+- `pymobiledevice3` for mounting the Developer Disk Image and listing/removing installed apps — see [`wda/README.md`](wda/README.md).
 
 ## Install
 
@@ -80,10 +80,12 @@ omarchy plugin add https://github.com/areu01or00/Piphone-plugin-for-Omarchy.git 
 cd ~/.config/omarchy/plugins/areu01or00.piphone
 ./install.sh
 
-# 3. Point the supervisor at your signed WDA runner (ends in your Apple Team ID).
-#    Use a systemd drop-in so the user service picks it up (a shell export won't reach it):
+# 3. Point the supervisor at your signed WDA runner's bundle id.
+#    Use a systemd drop-in so the user service picks it up (a shell export won't reach it).
+#    xtool namespaces the id as XTL-<YOUR_TEAM_ID>.com.facebook.WebDriverAgentRunner.xctrunner;
+#    confirm the exact id with: pymobiledevice3 apps list | grep -i webdriveragent
 mkdir -p ~/.config/systemd/user/iphone-wdad.service.d
-printf '[Service]\nEnvironment=IPHONE_WDA_RUNNER=com.facebook.WebDriverAgentRunner.xctrunner.<YOUR_TEAM_ID>\n' \
+printf '[Service]\nEnvironment=IPHONE_WDA_RUNNER=XTL-<YOUR_TEAM_ID>.com.facebook.WebDriverAgentRunner.xctrunner\n' \
   > ~/.config/systemd/user/iphone-wdad.service.d/runner.conf
 systemctl --user daemon-reload && systemctl --user restart iphone-wdad.service
 ```
@@ -91,7 +93,7 @@ systemctl --user daemon-reload && systemctl --user restart iphone-wdad.service
 `install.sh` is idempotent: it checks dependencies, builds the static Go supervisor and the C tools,
 creates the runtime data dir, and links + enables the `iphone-wdad` user service. The one thing it can't
 do for you is sign WebDriverAgent on the phone — see [`wda/README.md`](wda/README.md) (a free Apple ID
-works; the profile expires every 7 days, renew with `wda/resign.sh`).
+works; the profile expires every 7 days, renew with [xtool](https://github.com/xtool-org/xtool)).
 
 Then plug in your iPhone and click the **Piphone** icon in the bar. If the daemon is healthy the panel
 shows the phone as ready; otherwise it shows `no_phone` / an error with a message.
@@ -100,7 +102,7 @@ shows the phone as ready; otherwise it shows `no_phone` / an error with a messag
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `IPHONE_WDA_RUNNER` | WDA runner bundle id (xctrunner + your Team ID) | placeholder — **must set** |
+| `IPHONE_WDA_RUNNER` | WDA runner bundle id — xtool namespaces it `XTL-<TeamID>.…xctrunner` | placeholder — **must set** |
 | `PI_BIN` | path to the `pi` binary | mise install path, else `pi` on `PATH` |
 | `IPHONE_AGENT_REPO` | override the plugin/code location (dev checkouts) | the installed plugin dir |
 | `IPHONE_AGENT_PROVISION` | path to your `.mobileprovision` | `~/.local/share/iphone-agent/wda.mobileprovision` |
