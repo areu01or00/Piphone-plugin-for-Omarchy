@@ -1,38 +1,46 @@
 #!/usr/bin/env bash
-# LEGACY. Re-sign WDA after Impactor renewed the provisioning profile.
-# Apple's 2026 anisette change (-80045) broke Impactor's login, so this path no
-# longer works on its own. Prefer signing with xtool (see wda/README.md).
+# Re-sign and reinstall WebDriverAgent with xtool when its free Apple
+# provisioning profile expires (roughly weekly). Run `xtool auth login` once
+# first; the token then lasts about a year. See wda/README.md for the gotchas
+# this wraps (free 3-app limit, dev-cert trust, Developer Disk Image remount).
 set -euo pipefail
-umask 077
 
-runner=${IPHONE_WDA_RUNNER:-com.facebook.WebDriverAgentRunner.xctrunner.YOURTEAMID}
-team=${IPHONE_WDA_TEAM:-YOURTEAMID}
-work=${IPHONE_WDA_DIR:-$HOME/.local/share/iphone-agent/wda}
+xtool=${XTOOL:-xtool}
+ipa=${IPHONE_WDA_IPA:-$HOME/.local/share/iphone-agent/wda/WDA.ipa}
+udid=${IPHONE_WDA_UDID:-}
 py=${PYMOBILEDEVICE3:-pymobiledevice3}
-zsign=${ZSIGN:-$work/zsign-src/bin/zsign}
-key=${IPHONE_WDA_KEY:-$HOME/.config/PlumeImpactor/keys/$team/key.pem}
-ipa=${IPHONE_WDA_IPA:-$work/WDA.ipa}
-out=$work/WDA-signed.ipa
-profiles=$(mktemp -d)
-trap 'rm -rf "$profiles"' EXIT
 
-for file in "$py" "$zsign" "$key" "$ipa"; do [[ -e $file ]] || { echo "missing required file: $file" >&2; exit 1; }; done
+command -v "$xtool" >/dev/null 2>&1 || { echo "xtool not found. Install it (https://github.com/xtool-org/xtool) or set XTOOL=/path/to/xtool." >&2; exit 1; }
+[[ -e $ipa ]] || { echo "WDA ipa not found: $ipa (set IPHONE_WDA_IPA)." >&2; exit 1; }
+
+# Resolve the device UDID if not supplied. Best-effort parse of `xtool devices`,
+# then pymobiledevice3; matches both modern (8-16 hex) and legacy (40 hex) forms.
+udid_re='[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9a-f]{40}'
+if [[ -z $udid ]]; then
+  udid=$("$xtool" devices 2>/dev/null | grep -oE "$udid_re" | head -1 || true)
+fi
+if [[ -z $udid ]] && command -v "$py" >/dev/null 2>&1; then
+  udid=$("$py" usbmux list 2>/dev/null | grep -oE "$udid_re" | head -1 || true)
+fi
+[[ -n $udid ]] || { echo "No device UDID found. Plug in the iPhone, or set IPHONE_WDA_UDID." >&2; exit 1; }
+
+# The free profile allows at most 3 installed apps; if that's the blocker, xtool
+# prints "maximum number of installed apps" — uninstall one with
+# `$py apps uninstall <bundle-id>` and re-run. xtool also offers to revoke an old
+# signing certificate; answer yes.
+echo "Signing + installing $ipa to $udid via xtool..."
+"$xtool" install --udid "$udid" "$ipa"
+
 cat <<'NOTE'
-Impactor must first renew the free provisioning profile (normally every 7 days).
-This script dumps that renewed profile, extracts its public certificate, signs WDA, and installs it.
+
+Installed. xtool namespaces the runner bundle id as
+XTL-<YOUR_TEAM_ID>.com.facebook.WebDriverAgentRunner.xctrunner — make sure
+IPHONE_WDA_RUNNER in your iphone-wdad systemd drop-in matches it.
+
+If this was a fresh signature, TRUST the developer certificate on the phone:
+Settings > General > VPN & Device Management > your Apple ID > Trust, or WDA
+won't launch. After an iOS update/reboot also remount the Developer Disk Image:
+  pymobiledevice3 mounter auto-mount
+
+Then: systemctl --user restart iphone-wdad.service
 NOTE
-"$py" provision dump "$profiles" >/dev/null
-profile=$(grep -l "$runner" "$profiles"/* 2>/dev/null | head -1 || true)
-[[ -n $profile ]] || { echo "renewed WDA profile not found on phone" >&2; exit 1; }
-cp "$profile" "$work/wda.mobileprovision"
-openssl smime -inform der -verify -noverify -in "$profile" -out "$profiles/profile.plist" 2>/dev/null
-python - "$profiles/profile.plist" "$work/cert.pem" <<'PY'
-import plistlib, sys
-p = plistlib.load(open(sys.argv[1], "rb"))
-open(sys.argv[2], "wb").write(p["DeveloperCertificates"][0])
-PY
-openssl x509 -inform der -in "$work/cert.pem" -out "$profiles/cert.pem" 2>/dev/null
-mv "$profiles/cert.pem" "$work/cert.pem"
-"$zsign" -k "$key" -c "$work/cert.pem" -m "$work/wda.mobileprovision" -b "$runner" -o "$out" "$ipa" >/dev/null
-"$py" apps install "$out"
-echo "WDA re-signed and installed. Private key material was not copied or logged."

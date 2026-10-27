@@ -27,6 +27,14 @@ answer yes if it offers to revoke an old certificate):
 xtool install --udid <YOUR_DEVICE_UDID> WDA.ipa
 ```
 
+`wda/resign.sh` wraps that one command: it finds the attached device, runs
+`xtool install`, and prints the post-install steps below. It takes `XTOOL`,
+`IPHONE_WDA_IPA`, and `IPHONE_WDA_UDID` overrides:
+
+```bash
+IPHONE_WDA_IPA=/path/to/WDA.ipa ./resign.sh
+```
+
 ### Gotchas
 
 - **xtool namespaces the bundle id.** The installed runner becomes
@@ -50,9 +58,9 @@ Then restart the supervisor and it should go ready:
 systemctl --user restart iphone-wdad.service
 ```
 
-## Legacy: resign.sh (Impactor)
+## History: Impactor
 
-`resign.sh` is the original flow — renew the profile interactively in Impactor, then
-re-sign with a local key. Apple's 2026 anisette change (`-80045`) broke Impactor's
-login, so this path no longer works on its own; it is kept for reference in case that
-path is restored. It never prints or copies the private key into this repository.
+Before Apple's 2026 anisette change (`-80045`) broke the GSA login for Impactor /
+AltStore / Sideloadly, the profile was renewed interactively in Impactor and re-signed
+with a local key. `resign.sh` wraps xtool now; the old local-key flow is kept in git
+history. No signing key material is ever copied into this repository.
